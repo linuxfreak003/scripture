@@ -11,8 +11,6 @@ import (
 	"os/user"
 	"path"
 	"time"
-
-	"github.com/sanity-io/litter"
 )
 
 const (
@@ -187,26 +185,15 @@ func (s Scriptures) GetRandomVerse() *Verse {
 	switch rand.Intn(5) {
 	case 0:
 		book = s.BookOfMormon
-		book = s.PearlOfGreatPrice
-		fmt.Println("Book of Mormon")
 	case 1:
 		book = s.DoctrineAndCovenants
-		book = s.PearlOfGreatPrice
-		fmt.Println("Doctrine and Covenants")
 	case 2:
 		book = s.NewTestament
-		book = s.PearlOfGreatPrice
-		fmt.Println("New Testament")
 	case 3:
 		book = s.OldTestament
-		book = s.PearlOfGreatPrice
-		fmt.Println("Old Testament")
 	case 4:
 		book = s.PearlOfGreatPrice
-		fmt.Println("Pearl of Great Price")
 	}
-
-	litter.Dump(book)
 
 	b := rand.Intn(book.Len())
 	sub := book.GetSubBook(b)
