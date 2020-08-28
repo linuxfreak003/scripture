@@ -7,6 +7,9 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"os/user"
+	"path"
 	"time"
 )
 
@@ -90,33 +93,66 @@ func (v *Verse) Print() {
 	fmt.Printf("%d  %s\n", v.Verse, v.Text)
 }
 
-// If there are any errors book will be nil.
-func DownloadBook(url string) (book *Book) {
-	book = &Book{}
-
+func Download(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Print(err)
-
-		return
+		log.Printf("%v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
-	b, err := ioutil.ReadAll(resp.Body)
+	return ioutil.ReadAll(resp.Body)
+}
+
+// If there are any errors book will be nil.
+func DownloadBook(url string) (book *Book) {
+	book = &Book{}
+	b, err := Download(url)
 	if err != nil {
-		log.Print(err)
+		log.Printf("%v", err)
 
 		return
 	}
-
 	err = json.Unmarshal(b, book)
 	if err != nil {
-		log.Print(err)
+		log.Printf("%v", err)
 
 		return
 	}
 
 	return
+}
+
+func GetBook(uri string) (*Book, error) {
+	// First check if it's already on hdd
+	u, _ := url.Parse(uri)
+	ps := path.Base(u.Path)
+
+	usr, err := user.Current()
+	if err != nil {
+		return nil, err
+	}
+	p := path.Join(usr.HomeDir, ".scripture", ps)
+
+	content, err := ioutil.ReadFile(p)
+	if err != nil {
+		content, err = Download(uri)
+		if err != nil {
+			return nil, fmt.Errorf("Could not download %s", uri)
+		}
+		err = ioutil.WriteFile(p, content, 0644)
+		if err != nil {
+			log.Printf("Was not able to write file to %s: %v", p, err)
+		}
+	}
+
+	book := &Book{}
+
+	err = json.Unmarshal(content, book)
+	if err != nil {
+		return nil, err
+	}
+	return book, nil
 }
 
 func (s Scriptures) GetRandomVerse() *Verse {
@@ -126,7 +162,10 @@ func (s Scriptures) GetRandomVerse() *Verse {
 	case 0:
 		book = s.BookOfMormon
 	case 1:
-		book = s.DoctrineAndCovenants
+		// book = s.DoctrineAndCovenants
+		// Broken until the structs can be fixed
+		// D&C Scructure is different
+		book = s.BookOfMormon
 	case 2:
 		book = s.NewTestament
 	case 3:
@@ -145,15 +184,29 @@ func (s Scriptures) GetRandomVerse() *Verse {
 	return verse
 }
 
+func FailIf(err error) {
+	if err != nil {
+		log.Fatalf("Error encountered: %v", err)
+	}
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
-	scriptures := &Scriptures{
-		BookOfMormon:         DownloadBook(BookOfMormonURL),
-		DoctrineAndCovenants: DownloadBook(DoctrineAndCovenantsURL),
-		NewTestament:         DownloadBook(NewTestamentURL),
-		OldTestament:         DownloadBook(OldTestamentURL),
-		PearlOfGreatPrice:    DownloadBook(PearlOfGreatPriceURL),
-	}
+
+	var err error
+
+	scriptures := &Scriptures{}
+
+	scriptures.BookOfMormon, err = GetBook(BookOfMormonURL)
+	FailIf(err)
+	scriptures.DoctrineAndCovenants, err = GetBook(DoctrineAndCovenantsURL)
+	FailIf(err)
+	scriptures.NewTestament, err = GetBook(NewTestamentURL)
+	FailIf(err)
+	scriptures.OldTestament, err = GetBook(OldTestamentURL)
+	FailIf(err)
+	scriptures.PearlOfGreatPrice, err = GetBook(PearlOfGreatPriceURL)
+	FailIf(err)
 
 	scriptures.GetRandomVerse().Print()
 }
