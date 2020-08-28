@@ -11,6 +11,8 @@ import (
 	"os/user"
 	"path"
 	"time"
+
+	"github.com/sanity-io/litter"
 )
 
 const (
@@ -36,10 +38,12 @@ type Book struct {
 type SubBook struct {
 	Book     string     `json:"book"`
 	Chapters []*Chapter `json:"chapters"`
+	Sections []*Chapter `json:"sections"`
 }
 
 type Chapter struct {
 	Chapter   int      `json:"chapter"`
+	Section   int      `json:"section"`
 	Reference string   `json:"reference"`
 	Verses    []*Verse `json:"verses"`
 }
@@ -50,7 +54,22 @@ type Verse struct {
 	Verse     int    `json:"verse"`
 }
 
-func (b *Book) Get(title string) *SubBook {
+func (b *Book) Len() int {
+	return len(b.Books)
+}
+
+func (b *SubBook) Len() int {
+	if l := len(b.Chapters); l > 0 {
+		return l
+	}
+	return len(b.Sections)
+}
+
+func (c *Chapter) Len() int {
+	return len(c.Verses)
+}
+
+func (b *Book) GetSubBook(title string) *SubBook {
 	for _, book := range b.Books {
 		if book.Book == title {
 			return book
@@ -59,10 +78,21 @@ func (b *Book) Get(title string) *SubBook {
 
 	return &SubBook{}
 }
+func (b *Book) GetSubBookN(n int) *SubBook {
+	if n >= 0 && n < len(b.Books) {
+		return b.Books[n]
+	}
+	return &SubBook{}
+}
 
-func (sb *SubBook) Get(chapter int) *Chapter {
+func (sb *SubBook) GetChapter(chapter int) *Chapter {
 	for _, c := range sb.Chapters {
 		if c.Chapter == chapter {
+			return c
+		}
+	}
+	for _, c := range sb.Sections {
+		if c.Section == chapter {
 			return c
 		}
 	}
@@ -70,7 +100,7 @@ func (sb *SubBook) Get(chapter int) *Chapter {
 	return &Chapter{}
 }
 
-func (c *Chapter) Get(verse int) *Verse {
+func (c *Chapter) GetVerse(verse int) *Verse {
 	for _, v := range c.Verses {
 		if v.Verse == verse {
 			return v
@@ -97,30 +127,12 @@ func Download(url string) ([]byte, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		log.Printf("%v", err)
+
 		return nil, err
 	}
 	defer resp.Body.Close()
 
 	return ioutil.ReadAll(resp.Body)
-}
-
-// If there are any errors book will be nil.
-func DownloadBook(url string) (book *Book) {
-	book = &Book{}
-	b, err := Download(url)
-	if err != nil {
-		log.Printf("%v", err)
-
-		return
-	}
-	err = json.Unmarshal(b, book)
-	if err != nil {
-		log.Printf("%v", err)
-
-		return
-	}
-
-	return
 }
 
 func GetBook(uri string) (*Book, error) {
@@ -132,6 +144,7 @@ func GetBook(uri string) (*Book, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	p := path.Join(usr.HomeDir, ".scripture", ps)
 
 	content, err := ioutil.ReadFile(p)
@@ -140,6 +153,7 @@ func GetBook(uri string) (*Book, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Could not download %s", uri)
 		}
+
 		err = ioutil.WriteFile(p, content, 0644)
 		if err != nil {
 			log.Printf("Was not able to write file to %s: %v", p, err)
@@ -152,6 +166,18 @@ func GetBook(uri string) (*Book, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if book.Books == nil {
+		sub := &SubBook{}
+
+		err = json.Unmarshal(content, sub)
+		if err != nil {
+			return nil, err
+		}
+
+		book.Books = []*SubBook{sub}
+	}
+
 	return book, nil
 }
 
@@ -161,25 +187,33 @@ func (s Scriptures) GetRandomVerse() *Verse {
 	switch rand.Intn(5) {
 	case 0:
 		book = s.BookOfMormon
+		book = s.PearlOfGreatPrice
+		fmt.Println("Book of Mormon")
 	case 1:
-		// book = s.DoctrineAndCovenants
-		// Broken until the structs can be fixed
-		// D&C Scructure is different
-		book = s.BookOfMormon
+		book = s.DoctrineAndCovenants
+		book = s.PearlOfGreatPrice
+		fmt.Println("Doctrine and Covenants")
 	case 2:
 		book = s.NewTestament
+		book = s.PearlOfGreatPrice
+		fmt.Println("New Testament")
 	case 3:
 		book = s.OldTestament
+		book = s.PearlOfGreatPrice
+		fmt.Println("Old Testament")
 	case 4:
 		book = s.PearlOfGreatPrice
+		fmt.Println("Pearl of Great Price")
 	}
 
-	b := rand.Intn(len(book.Books))
-	sub := book.Books[b]
-	c := rand.Intn(len(sub.Chapters))
-	chapter := sub.Chapters[c]
-	v := rand.Intn(len(chapter.Verses))
-	verse := chapter.Verses[v]
+	litter.Dump(book)
+
+	b := rand.Intn(book.Len())
+	sub := book.GetSubBook(b)
+	c := rand.Intn(sub.Len())
+	chapter := sub.GetChapter(c)
+	v := rand.Intn(chapter.Len())
+	verse := chapter.GetVerse(v)
 
 	return verse
 }
